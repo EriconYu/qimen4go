@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.venv/
+.pytest_cache/
+__pycache__/
+target/
+build/
+.gradle/
+.dart_tool/
+.build/
+*.iml
+.DS_Store
