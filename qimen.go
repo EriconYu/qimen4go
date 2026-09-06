@@ -32,7 +32,15 @@ func path() (string, error) {
 	})
 	return enginePath, engineErr
 }
-func Calculate(input map[string]any) (map[string]any, error) {
+
+type engineEnvelope struct {
+	Ok        bool
+	Data      map[string]any
+	Canonical map[string]any
+	Error     string
+}
+
+func run(input map[string]any) (*engineEnvelope, error) {
 	p, e := path()
 	if e != nil {
 		return nil, e
@@ -44,18 +52,30 @@ func Calculate(input map[string]any) (map[string]any, error) {
 	if e != nil {
 		return nil, fmt.Errorf("engine: %w: %s", e, out)
 	}
-	var envelope struct {
-		Ok    bool
-		Data  map[string]any
-		Error string
-	}
+	var envelope engineEnvelope
 	if e = json.Unmarshal(out, &envelope); e != nil {
 		return nil, e
 	}
 	if !envelope.Ok {
 		return nil, fmt.Errorf("%s", envelope.Error)
 	}
+	return &envelope, nil
+}
+
+func Calculate(input map[string]any) (map[string]any, error) {
+	envelope, err := run(input)
+	if err != nil {
+		return nil, err
+	}
 	return envelope.Data, nil
+}
+
+func Canonical(input map[string]any) (map[string]any, error) {
+	envelope, err := run(input)
+	if err != nil {
+		return nil, err
+	}
+	return envelope.Canonical, nil
 }
 
 type reader struct {

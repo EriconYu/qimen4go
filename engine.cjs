@@ -15226,6 +15226,7 @@ var SEASON_WANG_SHUAI = {
   "\u51AC": { "\u6C34": "\u65FA", "\u6728": "\u76F8", "\u91D1": "\u4F11", "\u571F": "\u56DA", "\u706B": "\u6B7B" }
 };
 var YUAN_NAMES = ["\u4E0A\u5143", "\u4E2D\u5143", "\u4E0B\u5143"];
+var ALGORITHM_VERSION = "qimen-zhuanpan-chaibu-v1";
 function getSeason(monthBranch) {
   if (["\u5BC5", "\u536F"].includes(monthBranch)) return "\u6625";
   if (["\u5DF3", "\u5348"].includes(monthBranch)) return "\u590F";
@@ -15247,7 +15248,6 @@ function buildMonthPhaseMap(season) {
 function getFormations(heavenStem, earthStem) {
   const formations = [];
   const key = `${heavenStem}+${earthStem}`;
-  const reverseKey = `${earthStem}+${heavenStem}`;
   const FORMATION_MAP = {
     // 吉格
     "\u4E59+\u4E19": "\u5947\u4EEA\u76F8\u4F50",
@@ -15281,7 +15281,6 @@ function getFormations(heavenStem, earthStem) {
     "\u8F9B+\u58EC": "\u51F6\u86C7\u5165\u5211"
   };
   if (FORMATION_MAP[key]) formations.push(FORMATION_MAP[key]);
-  if (FORMATION_MAP[reverseKey] && reverseKey !== key) formations.push(FORMATION_MAP[reverseKey]);
   return formations;
 }
 function getXunShou(dayStem, dayBranch) {
@@ -15301,7 +15300,23 @@ function assertValidTimeZone(timeZone) {
     throw error;
   }
 }
+function assertValidInput(input) {
+  const values = [input.year, input.month, input.day, input.hour, input.minute ?? 0];
+  if (!values.every(Number.isInteger)) throw new Error("\u65E5\u671F\u548C\u65F6\u95F4\u5FC5\u987B\u662F\u6574\u6570");
+  if (input.year < 1900 || input.year > 2100) throw new Error("year \u5FC5\u987B\u5728 1900 \u5230 2100 \u4E4B\u95F4");
+  if (input.month < 1 || input.month > 12) throw new Error("month \u5FC5\u987B\u5728 1 \u5230 12 \u4E4B\u95F4");
+  if (input.hour < 0 || input.hour > 23) throw new Error("hour \u5FC5\u987B\u5728 0 \u5230 23 \u4E4B\u95F4");
+  if ((input.minute ?? 0) < 0 || (input.minute ?? 0) > 59) throw new Error("minute \u5FC5\u987B\u5728 0 \u5230 59 \u4E4B\u95F4");
+  const date = new Date(Date.UTC(input.year, input.month - 1, input.day));
+  if (date.getUTCFullYear() !== input.year || date.getUTCMonth() !== input.month - 1 || date.getUTCDate() !== input.day) {
+    throw new Error("\u65E5\u671F\u65E0\u6548");
+  }
+  if (input.panType != null && input.panType !== "zhuan") throw new Error("\u76EE\u524D\u4EC5\u652F\u6301\u8F6C\u76D8\u5947\u95E8");
+  if (input.juMethod != null && !["chaibu", "maoshan"].includes(input.juMethod)) throw new Error("juMethod \u65E0\u6548");
+  if (input.zhiFuJiGong != null && !["ji_liuyi", "ji_wugong"].includes(input.zhiFuJiGong)) throw new Error("zhiFuJiGong \u65E0\u6548");
+}
 function calculateQimenData(input) {
+  assertValidInput(input);
   const { year, month, day, hour, minute = 0 } = input;
   const timezone = input.timezone || DEFAULT_DIVINATION_TIMEZONE;
   const juMethod = input.juMethod || "chaibu";
@@ -15385,6 +15400,13 @@ function calculateQimenData(input) {
           }
         }
         const zhiShiGate = DOOR_NAMES[mandateIdx] || "";
+        let zhiShiPalace = 0;
+        for (let i = 0; i < 9; i++) {
+          if (t.acquired[i].getDoor(true) === zhiShiGate) {
+            zhiShiPalace = i;
+            break;
+          }
+        }
         const season = getSeason(monthZhi);
         const monthPhase = buildMonthPhaseMap(season);
         const dayKong = getKongWang(dayGan, dayZhi);
@@ -15422,7 +15444,7 @@ function calculateQimenData(input) {
           const stemElement = GAN_WUXING[heavenStem] || "";
           const stemWangShuai = stemElement ? getWangShuai(stemElement, season) : void 0;
           const elementState = getWangShuai(PALACE_ELEMENTS[i], season);
-          const isKongWang = dayKongPalaces.includes(i);
+          const isKongWang = dayKongPalaces.includes(i) || hourKongPalaces.includes(i);
           const isYiMa = yiMaPalace === i;
           const muBranch = RU_MU_MAP[heavenStem];
           const muPalace = muBranch ? BRANCH_TO_PALACE[muBranch] : void 0;
@@ -15453,6 +15475,7 @@ function calculateQimenData(input) {
           });
         }
         return {
+          algorithmVersion: ALGORITHM_VERSION,
           dateInfo: {
             solarDate: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
             lunarDate,
@@ -15470,7 +15493,7 @@ function calculateQimenData(input) {
           yuan,
           xunShou,
           zhiFu: { star: zhiFuStar, palace: zhiFuPalace + 1 },
-          zhiShi: { gate: zhiShiGate, palace: mandateIdx + 1 },
+          zhiShi: { gate: zhiShiGate, palace: zhiShiPalace + 1 },
           palaces,
           kongWang: {
             dayKong: {
@@ -15546,6 +15569,7 @@ function renderQimenCanonicalJSON(result, options = {}) {
     if (result.dateInfo.solarTermRange) basicInfo.\u8282\u6C14\u8303\u56F4 = result.dateInfo.solarTermRange;
     basicInfo.\u76D8\u5F0F = result.panType;
     basicInfo.\u5B9A\u5C40\u6CD5 = result.juMethod;
+    basicInfo.\u7B97\u6CD5\u7248\u672C = result.algorithmVersion;
   }
   const dayKongPalaces = new Set(result.kongWang.dayKong.palaces);
   const hourKongPalaces = new Set(result.kongWang.hourKong.palaces);
